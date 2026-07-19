@@ -405,8 +405,8 @@ class ColorSenseApp:
         self.root = tk.Tk()
         self.root.title("Color Sense Picker")
         self.set_window_icon()
-        self.root.geometry("860x560")
-        self.root.minsize(780, 500)
+        self.root.geometry("920x620")
+        self.root.minsize(860, 580)
         self.root.configure(bg=APP_BG)
 
         self.capture = ScreenCapture()
@@ -419,6 +419,7 @@ class ColorSenseApp:
         self.square_image = None
         self.hue_image = None
         self.position_image = None
+        self.pinned_positions = []
         self.hex_var = tk.StringVar()
         self.target_var = tk.StringVar(value="绿")
         self.status_var = tk.StringVar(value="准备就绪")
@@ -589,9 +590,17 @@ class ColorSenseApp:
             style="Panel.TLabel",
             font=("Microsoft YaHei UI", 10, "bold"),
         ).pack(anchor="w")
+        position_buttons = ttk.Frame(position_panel, style="Panel.TFrame")
+        position_buttons.pack(fill="x", pady=(6, 0))
+        ttk.Button(position_buttons, text="固定位置", command=self.pin_hue_position).pack(
+            side="left", fill="x", expand=True
+        )
+        ttk.Button(position_buttons, text="清空", command=self.clear_pinned_positions).pack(
+            side="left", fill="x", expand=True, padx=(6, 0)
+        )
         self.position_canvas = tk.Canvas(
             position_panel,
-            width=96,
+            width=118,
             height=210,
             bg=PANEL_BG,
             highlightthickness=0,
@@ -692,6 +701,40 @@ class ColorSenseApp:
             bar_y + bar_h,
             outline="#777777",
         )
+        for index, pinned in enumerate(self.pinned_positions, start=1):
+            pinned_y = bar_y + (pinned["hue"] % 360) / 360 * (bar_h - 1)
+            pinned_hex = rgb_to_hex(pinned["rgb"])
+            self.position_canvas.create_line(
+                bar_x - 4,
+                pinned_y,
+                bar_x + bar_w + 4,
+                pinned_y,
+                fill=pinned_hex,
+                width=2,
+            )
+            self.position_canvas.create_oval(
+                bar_x - 22,
+                pinned_y - 7,
+                bar_x - 8,
+                pinned_y + 7,
+                fill=pinned_hex,
+                outline="#ffffff",
+            )
+            self.position_canvas.create_text(
+                bar_x - 15,
+                pinned_y,
+                fill="#ffffff",
+                text=str(index),
+                font=("Consolas", 8, "bold"),
+            )
+            self.position_canvas.create_rectangle(
+                bar_x + bar_w + 44,
+                pinned_y - 6,
+                bar_x + bar_w + 56,
+                pinned_y + 6,
+                fill=pinned_hex,
+                outline="#dddddd",
+            )
 
         marker_y = bar_y + (hue_degrees % 360) / 360 * (bar_h - 1)
         current_hex = rgb_to_hex(self.current_rgb)
@@ -740,9 +783,34 @@ class ColorSenseApp:
             font=("Consolas", 10),
         )
         if saturation < 8:
-            self.position_var.set("低饱和\n色相弱")
+            label = "低饱和\n色相弱"
         else:
-            self.position_var.set("{}段\n{:.0f}°".format(color_name, hue_degrees))
+            label = "{}段\n{:.0f}°".format(color_name, hue_degrees)
+        self.position_var.set("{}\n固定 {} 个".format(label, len(self.pinned_positions)))
+
+    def pin_hue_position(self):
+        h, s, _v = rgb_to_hsv_tuple(self.current_rgb)
+        top_name = palette_matches(self.current_rgb)[0][0]
+        self.pinned_positions.append(
+            {
+                "hue": h,
+                "saturation": s,
+                "rgb": self.current_rgb,
+                "name": top_name if s >= 8 else "低饱和",
+            }
+        )
+        self.update_output()
+        self.status_var.set(
+            "已固定第 {} 个色相位置：{} {}".format(
+                len(self.pinned_positions), rgb_to_hex(self.current_rgb), self.pinned_positions[-1]["name"]
+            )
+        )
+
+    def clear_pinned_positions(self):
+        count = len(self.pinned_positions)
+        self.pinned_positions.clear()
+        self.update_output()
+        self.status_var.set("已清空 {} 个固定色相位置".format(count))
 
     def set_current_rgb(self, rgb, refresh_picker=False):
         self.current_rgb = tuple(int(clamp(value, 0, 255)) for value in rgb)
