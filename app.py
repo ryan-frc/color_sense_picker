@@ -398,6 +398,8 @@ class ScreenPickerOverlay(tk.Toplevel):
 class ColorSenseApp:
     PICKER_SIZE = 220
     HUE_WIDTH = 28
+    POSITION_BAR_WIDTH = 34
+    POSITION_BAR_HEIGHT = 180
 
     def __init__(self):
         self.root = tk.Tk()
@@ -416,9 +418,11 @@ class ColorSenseApp:
 
         self.square_image = None
         self.hue_image = None
+        self.position_image = None
         self.hex_var = tk.StringVar()
         self.target_var = tk.StringVar(value="绿")
         self.status_var = tk.StringVar(value="准备就绪")
+        self.position_var = tk.StringVar()
         self.info_vars = {
             "HEX": tk.StringVar(),
             "RGB": tk.StringVar(),
@@ -565,13 +569,40 @@ class ColorSenseApp:
         ttk.Label(right, text="颜色归属程度", style="Panel.TLabel", font=("Microsoft YaHei UI", 12, "bold")).grid(
             row=3, column=0, sticky="w", pady=(8, 8)
         )
+        match_area = ttk.Frame(right, style="Panel.TFrame")
+        match_area.grid(row=4, column=0, sticky="nsew")
+        match_area.columnconfigure(0, weight=1)
+        match_area.rowconfigure(0, weight=1)
         self.match_canvas = tk.Canvas(
-            right,
+            match_area,
             height=235,
             bg=PANEL_BG,
             highlightthickness=0,
         )
-        self.match_canvas.grid(row=4, column=0, sticky="nsew")
+        self.match_canvas.grid(row=0, column=0, sticky="nsew")
+
+        position_panel = ttk.Frame(match_area, style="Panel.TFrame")
+        position_panel.grid(row=0, column=1, sticky="ns", padx=(14, 0))
+        ttk.Label(
+            position_panel,
+            text="色相位置",
+            style="Panel.TLabel",
+            font=("Microsoft YaHei UI", 10, "bold"),
+        ).pack(anchor="w")
+        self.position_canvas = tk.Canvas(
+            position_panel,
+            width=96,
+            height=210,
+            bg=PANEL_BG,
+            highlightthickness=0,
+        )
+        self.position_canvas.pack(pady=(6, 0))
+        ttk.Label(
+            position_panel,
+            textvariable=self.position_var,
+            style="Muted.TLabel",
+            justify="center",
+        ).pack(fill="x", pady=(4, 0))
         right.rowconfigure(4, weight=1)
 
         status = ttk.Frame(self.root, padding=(14, 6))
@@ -639,6 +670,80 @@ class ColorSenseApp:
             tags=("marker",),
         )
 
+    def draw_hue_position(self, hue_degrees, saturation, color_name):
+        bar_x = 24
+        bar_y = 8
+        bar_w = self.POSITION_BAR_WIDTH
+        bar_h = self.POSITION_BAR_HEIGHT
+        if self.position_image is None:
+            self.position_image = tk.PhotoImage(width=bar_w, height=bar_h)
+            for y in range(bar_h):
+                hue = y / (bar_h - 1)
+                r, g, b = colorsys.hsv_to_rgb(hue, 1, 1)
+                color = "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
+                self.position_image.put("{" + " ".join([color] * bar_w) + "}", to=(0, y))
+
+        self.position_canvas.delete("all")
+        self.position_canvas.create_image(bar_x, bar_y, image=self.position_image, anchor="nw")
+        self.position_canvas.create_rectangle(
+            bar_x,
+            bar_y,
+            bar_x + bar_w,
+            bar_y + bar_h,
+            outline="#777777",
+        )
+
+        marker_y = bar_y + (hue_degrees % 360) / 360 * (bar_h - 1)
+        current_hex = rgb_to_hex(self.current_rgb)
+        self.position_canvas.create_line(
+            bar_x - 6,
+            marker_y,
+            bar_x + bar_w + 6,
+            marker_y,
+            fill="#ffffff",
+            width=2,
+        )
+        self.position_canvas.create_polygon(
+            bar_x - 10,
+            marker_y,
+            bar_x - 2,
+            marker_y - 6,
+            bar_x - 2,
+            marker_y + 6,
+            fill="#ffffff",
+            outline="#555555",
+        )
+        self.position_canvas.create_polygon(
+            bar_x + bar_w + 10,
+            marker_y,
+            bar_x + bar_w + 2,
+            marker_y - 6,
+            bar_x + bar_w + 2,
+            marker_y + 6,
+            fill="#ffffff",
+            outline="#555555",
+        )
+        self.position_canvas.create_rectangle(
+            bar_x + bar_w + 18,
+            marker_y - 9,
+            bar_x + bar_w + 36,
+            marker_y + 9,
+            fill=current_hex,
+            outline="#ffffff",
+        )
+        self.position_canvas.create_text(
+            bar_x + bar_w + 18,
+            bar_y + bar_h + 13,
+            anchor="center",
+            fill=MUTED,
+            text="{:.0f}°".format(hue_degrees),
+            font=("Consolas", 10),
+        )
+        if saturation < 8:
+            self.position_var.set("低饱和\n色相弱")
+        else:
+            self.position_var.set("{}段\n{:.0f}°".format(color_name, hue_degrees))
+
     def set_current_rgb(self, rgb, refresh_picker=False):
         self.current_rgb = tuple(int(clamp(value, 0, 255)) for value in rgb)
         h, s, v = rgb_to_hsv_tuple(self.current_rgb)
@@ -704,6 +809,7 @@ class ColorSenseApp:
             "当前颜色属于“{}”的程度：{:.1f}%".format(self.target_var.get(), target_score)
         )
         self.draw_match_bars(matches)
+        self.draw_hue_position(h, s, top_name)
 
     def draw_match_bars(self, matches):
         self.match_canvas.delete("all")
