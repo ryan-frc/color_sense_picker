@@ -398,15 +398,15 @@ class ScreenPickerOverlay(tk.Toplevel):
 class ColorSenseApp:
     PICKER_SIZE = 220
     HUE_WIDTH = 28
-    POSITION_BAR_WIDTH = 34
-    POSITION_BAR_HEIGHT = 180
+    WHEEL_SIZE = 236
+    WHEEL_SEGMENTS = 24
 
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Color Sense Picker")
         self.set_window_icon()
-        self.root.geometry("920x620")
-        self.root.minsize(860, 580)
+        self.root.geometry("1080x740")
+        self.root.minsize(1040, 700)
         self.root.configure(bg=APP_BG)
 
         self.capture = ScreenCapture()
@@ -576,7 +576,7 @@ class ColorSenseApp:
         match_area.rowconfigure(0, weight=1)
         self.match_canvas = tk.Canvas(
             match_area,
-            height=235,
+            height=350,
             bg=PANEL_BG,
             highlightthickness=0,
         )
@@ -600,8 +600,8 @@ class ColorSenseApp:
         )
         self.position_canvas = tk.Canvas(
             position_panel,
-            width=118,
-            height=210,
+            width=self.WHEEL_SIZE,
+            height=self.WHEEL_SIZE,
             bg=PANEL_BG,
             highlightthickness=0,
         )
@@ -680,113 +680,139 @@ class ColorSenseApp:
         )
 
     def draw_hue_position(self, hue_degrees, saturation, color_name):
-        bar_x = 24
-        bar_y = 8
-        bar_w = self.POSITION_BAR_WIDTH
-        bar_h = self.POSITION_BAR_HEIGHT
-        if self.position_image is None:
-            self.position_image = tk.PhotoImage(width=bar_w, height=bar_h)
-            for y in range(bar_h):
-                hue = y / (bar_h - 1)
-                r, g, b = colorsys.hsv_to_rgb(hue, 1, 1)
-                color = "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
-                self.position_image.put("{" + " ".join([color] * bar_w) + "}", to=(0, y))
-
         self.position_canvas.delete("all")
-        self.position_canvas.create_image(bar_x, bar_y, image=self.position_image, anchor="nw")
-        self.position_canvas.create_rectangle(
-            bar_x,
-            bar_y,
-            bar_x + bar_w,
-            bar_y + bar_h,
-            outline="#777777",
-        )
+        center = self.WHEEL_SIZE / 2
+        outer_radius = 92
+        inner_radius = 58
+        marker_radius = (outer_radius + inner_radius) / 2
+        self.draw_24_hue_wheel(center, outer_radius, inner_radius)
+
         for index, pinned in enumerate(self.pinned_positions, start=1):
-            pinned_y = bar_y + (pinned["hue"] % 360) / 360 * (bar_h - 1)
+            pinned_x, pinned_y = self.hue_point(center, pinned["hue"], outer_radius + 12)
+            ring_x1, ring_y1 = self.hue_point(center, pinned["hue"], inner_radius - 2)
+            ring_x2, ring_y2 = self.hue_point(center, pinned["hue"], outer_radius + 4)
             pinned_hex = rgb_to_hex(pinned["rgb"])
             self.position_canvas.create_line(
-                bar_x - 4,
-                pinned_y,
-                bar_x + bar_w + 4,
-                pinned_y,
+                ring_x1,
+                ring_y1,
+                ring_x2,
+                ring_y2,
                 fill=pinned_hex,
-                width=2,
+                width=3,
             )
             self.position_canvas.create_oval(
-                bar_x - 22,
+                pinned_x - 8,
                 pinned_y - 7,
-                bar_x - 8,
+                pinned_x + 8,
                 pinned_y + 7,
                 fill=pinned_hex,
                 outline="#ffffff",
             )
             self.position_canvas.create_text(
-                bar_x - 15,
+                pinned_x,
                 pinned_y,
                 fill="#ffffff",
                 text=str(index),
                 font=("Consolas", 8, "bold"),
             )
-            self.position_canvas.create_rectangle(
-                bar_x + bar_w + 44,
-                pinned_y - 6,
-                bar_x + bar_w + 56,
-                pinned_y + 6,
-                fill=pinned_hex,
-                outline="#dddddd",
-            )
 
-        marker_y = bar_y + (hue_degrees % 360) / 360 * (bar_h - 1)
+        marker_x, marker_y = self.hue_point(center, hue_degrees, marker_radius)
         current_hex = rgb_to_hex(self.current_rgb)
         self.position_canvas.create_line(
-            bar_x - 6,
-            marker_y,
-            bar_x + bar_w + 6,
+            center,
+            center,
+            marker_x,
             marker_y,
             fill="#ffffff",
-            width=2,
+            dash=(2, 3),
         )
-        self.position_canvas.create_polygon(
-            bar_x - 10,
-            marker_y,
-            bar_x - 2,
-            marker_y - 6,
-            bar_x - 2,
-            marker_y + 6,
-            fill="#ffffff",
-            outline="#555555",
-        )
-        self.position_canvas.create_polygon(
-            bar_x + bar_w + 10,
-            marker_y,
-            bar_x + bar_w + 2,
-            marker_y - 6,
-            bar_x + bar_w + 2,
-            marker_y + 6,
-            fill="#ffffff",
-            outline="#555555",
-        )
-        self.position_canvas.create_rectangle(
-            bar_x + bar_w + 18,
-            marker_y - 9,
-            bar_x + bar_w + 36,
-            marker_y + 9,
+        self.position_canvas.create_oval(
+            marker_x - 10,
+            marker_y - 10,
+            marker_x + 10,
+            marker_y + 10,
             fill=current_hex,
             outline="#ffffff",
+            width=2,
         )
         self.position_canvas.create_text(
-            bar_x + bar_w + 18,
-            bar_y + bar_h + 13,
+            center,
+            center,
             anchor="center",
-            fill=MUTED,
-            text="{:.0f}°".format(hue_degrees),
-            font=("Consolas", 10),
+            fill="#dddddd",
+            text="24色\n色相环",
+            font=("Microsoft YaHei UI", 9),
+            justify="center",
         )
         if saturation < 8:
             label = "低饱和\n色相弱"
         else:
             label = "{}段\n{:.0f}°".format(color_name, hue_degrees)
-        self.position_var.set("{}\n固定 {} 个".format(label, len(self.pinned_positions)))
+        relation = self.hue_relation_text(hue_degrees)
+        self.position_var.set("{}\n{}\n固定 {} 个".format(label, relation, len(self.pinned_positions)))
+
+    def draw_24_hue_wheel(self, center, outer_radius, inner_radius):
+        gap = 1.2
+        for index in range(self.WHEEL_SEGMENTS):
+            start = index * 360 / self.WHEEL_SEGMENTS + gap
+            end = (index + 1) * 360 / self.WHEEL_SEGMENTS - gap
+            middle = (start + end) / 2
+            r, g, b = colorsys.hsv_to_rgb(middle / 360, 0.92, 0.95)
+            color = "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
+            points = []
+            for step in range(6):
+                angle = start + (end - start) * step / 5
+                points.extend(self.hue_point(center, angle, outer_radius))
+            for step in range(5, -1, -1):
+                angle = start + (end - start) * step / 5
+                points.extend(self.hue_point(center, angle, inner_radius))
+            self.position_canvas.create_polygon(points, fill=color, outline="#141414", width=2)
+
+        self.position_canvas.create_oval(
+            center - outer_radius - 12,
+            center - outer_radius - 12,
+            center + outer_radius + 12,
+            center + outer_radius + 12,
+            outline="#bbbbbb",
+            dash=(4, 3),
+        )
+        self.position_canvas.create_oval(
+            center - inner_radius + 10,
+            center - inner_radius + 10,
+            center + inner_radius - 10,
+            center + inner_radius - 10,
+            outline="#dddddd",
+        )
+
+    def hue_point(self, center, hue_degrees, radius):
+        angle = math.radians(hue_degrees % 360)
+        return center + math.cos(angle) * radius, center - math.sin(angle) * radius
+
+    def hue_relation_text(self, hue_degrees):
+        if not self.pinned_positions:
+            return "未固定对比点"
+        nearest = min(
+            self.pinned_positions,
+            key=lambda pinned: self.hue_distance(hue_degrees, pinned["hue"]),
+        )
+        distance = self.hue_distance(hue_degrees, nearest["hue"])
+        if distance < 15:
+            relation = "同类色"
+        elif distance < 45:
+            relation = "类似色"
+        elif distance < 75:
+            relation = "邻近色"
+        elif distance < 105:
+            relation = "中差色"
+        elif distance < 150:
+            relation = "对比色"
+        else:
+            relation = "互补色"
+        return "最近固定点：{:.0f}° {}".format(distance, relation)
+
+    def hue_distance(self, hue_a, hue_b):
+        distance = abs((hue_a % 360) - (hue_b % 360))
+        return min(distance, 360 - distance)
 
     def pin_hue_position(self):
         h, s, _v = rgb_to_hsv_tuple(self.current_rgb)
